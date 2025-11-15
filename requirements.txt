@@ -1,0 +1,8 @@
+PyJWT
+requests
+Flask
+Werkzeug
+captcha
+Flask-SQLAlchemy
+google-auth-oauthlib
+google-auth
