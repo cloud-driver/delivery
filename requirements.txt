@@ -6,3 +6,4 @@ captcha
 Flask-SQLAlchemy
 google-auth-oauthlib
 google-auth
+gunicorn
