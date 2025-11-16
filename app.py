@@ -17,6 +17,7 @@ from flask_sqlalchemy import SQLAlchemy
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 # --- 1. 配置與初始化 (Configuration and Initialization) ---
 
@@ -28,6 +29,7 @@ def safe_getenv(key, default=None):
     return os.getenv(key, default)
 
 app = Flask(__name__)
+CORS(app)
 
 app.config['SECRET_KEY'] = secrets.token_hex(32)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auth.db'
