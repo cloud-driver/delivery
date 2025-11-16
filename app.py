@@ -16,6 +16,7 @@ from captcha.image import ImageCaptcha
 from flask_sqlalchemy import SQLAlchemy
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from dotenv import load_dotenv
 
 # --- 1. 配置與初始化 (Configuration and Initialization) ---
 
@@ -23,13 +24,7 @@ db = SQLAlchemy()
 
 # 模擬 os.getenv 獲取設定 (請確保您的環境變數已設定)
 def safe_getenv(key, default=None):
-    # 在實際部署中應使用 os.getenv，這裡僅為整合時的結構保持
-    # 假設必要的環境變數已在運行環境中設置
-    if key == 'LINE_LOGIN_CHANNEL_ID': return 'YOUR_LINE_CHANNEL_ID'
-    if key == 'LINE_LOGIN_CHANNEL_SECRET': return 'YOUR_LINE_CHANNEL_SECRET'
-    if key == 'GOOGLE_CLIENT_ID': return 'YOUR_GOOGLE_CLIENT_ID'
-    if key == 'GOOGLE_CLIENT_SECRET': return 'YOUR_GOOGLE_CLIENT_SECRET'
-    if key == 'URL': return 'http://127.0.0.1:5000' # 假設本機運行
+    if os.path.exists(".env"): load_dotenv()
     return os.getenv(key, default)
 
 app = Flask(__name__)

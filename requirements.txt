@@ -7,3 +7,4 @@ Flask-SQLAlchemy
 google-auth-oauthlib
 google-auth
 gunicorn
+python-dotenv
