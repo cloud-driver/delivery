@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+
 import jwt
 import random
 import string
@@ -6,8 +9,6 @@ import hashlib
 import base64
 import os
 import requests
-import uuid
-import time
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, request, jsonify
@@ -18,6 +19,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
 from flask_cors import CORS
+from gevent.pywsgi import WSGIServer
 
 # --- 1. 配置與初始化 (Configuration and Initialization) ---
 
@@ -830,4 +832,9 @@ def callback_google_api():
         return jsonify({'message': '伺服器內部錯誤'}), 500
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5000)
+    port = int(os.environ.get("PORT", 10000))
+    print(f"Starting gevent WSGIServer on 0.0.0.0:{port}...")
+    
+    http_server = WSGIServer(('0.0.0.0', port), app)
+    
+    http_server.serve_forever()
