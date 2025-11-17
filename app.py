@@ -38,7 +38,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_AS_ASCII'] = False
 app.config['FLASK_ADMIN_SWATCH'] = 'cerulean'
 
-ADMIN_USERNAME = safe_getenv('ADMIN_USER') # 建議也存到 .env
+ADMIN_USERNAME = safe_getenv('ADMIN_USER')
 ADMIN_PASSWORD_HASH = generate_password_hash(safe_getenv('ADMIN_PASS'))
 
 db.init_app(app)
@@ -46,14 +46,10 @@ db.init_app(app)
 class AdminModelView(ModelView):
 
     can_create = False
-    # 檢查是否為管理者
     def is_accessible(self):
-        # 檢查 Flask session 中是否有 'is_admin' 標記
         return session.get('is_admin') == True
 
-    # 如果 'is_accessible' 回傳 False (未登入)，執行的動作
     def inaccessible_callback(self, name, **kwargs):
-        # 重新導向到後台登入頁面
         flash('請先登入後台。', 'warning')
         return redirect(url_for('admin_login'))
     
@@ -251,19 +247,16 @@ def admin_login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # 檢查帳號和密碼
         if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
             session['is_admin'] = True
             flash('登入成功！', 'success')
-            return redirect(url_for('admin.index')) # 導向到後台首頁
+            return redirect(url_for('admin.index'))
         else:
             flash('帳號或密碼錯誤。', 'danger')
             
-    # 如果已經登入，直接導向後台
     if session.get('is_admin'):
         return redirect(url_for('admin.index'))
 
-    # 顯示登入表單 (使用 render_template_string 直接渲染 HTML，無需額外檔案)
     return render_template_string('''
         <!DOCTYPE html>
         <html>
@@ -874,9 +867,6 @@ admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
 admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
 
 if __name__ == "__main__":
-    # 注意：PORT 10000 可能會被某些系統阻擋，如果 10000 連不上，請改用 5000
     port = int(os.environ.get("PORT", 10000)) 
     print(f"Starting Flask development server on http://127.0.0.1:{port}...")
-
-    # 使用 Flask 內建的伺服器來執行
     app.run(host='0.0.0.0', port=port)
