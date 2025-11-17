@@ -214,8 +214,8 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
     db.session.commit()
     return user, None 
 
-@app.route("test")
-def test():
+@app.route("/")
+def home():
     return render_template('test.html')
 
 @app.route("/api/captcha", methods=["GET"])
