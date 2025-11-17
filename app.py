@@ -1,5 +1,5 @@
-from gevent import monkey
-monkey.patch_all()
+#from gevent import monkey
+#monkey.patch_all()
 
 import jwt
 import random
@@ -11,7 +11,7 @@ import os
 import requests
 from datetime import datetime, timedelta, timezone
 from functools import wraps
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, redirect, url_for, render_template_string, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from captcha.image import ImageCaptcha
 from flask_sqlalchemy import SQLAlchemy
@@ -19,7 +19,9 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from dotenv import load_dotenv
 from flask_cors import CORS
-from gevent.pywsgi import WSGIServer
+#from gevent.pywsgi import WSGIServer
+from flask_admin import Admin, BaseView, expose, AdminIndexView
+from flask_admin.contrib.sqla import ModelView
 
 db = SQLAlchemy()
 
@@ -31,11 +33,36 @@ app = Flask(__name__)
 CORS(app)
 
 app.config['SECRET_KEY'] = secrets.token_hex(32)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///auth.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = safe_getenv('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_AS_ASCII'] = False
+app.config['FLASK_ADMIN_SWATCH'] = 'cerulean'
+
+ADMIN_USERNAME = safe_getenv('ADMIN_USER') # 建議也存到 .env
+ADMIN_PASSWORD_HASH = generate_password_hash(safe_getenv('ADMIN_PASS'))
 
 db.init_app(app)
+
+class AdminModelView(ModelView):
+
+    can_create = False
+    # 檢查是否為管理者
+    def is_accessible(self):
+        # 檢查 Flask session 中是否有 'is_admin' 標記
+        return session.get('is_admin') == True
+
+    # 如果 'is_accessible' 回傳 False (未登入)，執行的動作
+    def inaccessible_callback(self, name, **kwargs):
+        # 重新導向到後台登入頁面
+        flash('請先登入後台。', 'warning')
+        return redirect(url_for('admin_login'))
+    
+class MyAdminIndexView(AdminIndexView):
+    @expose('/')
+    def index(self):
+        if not session.get('is_admin'):
+            return redirect(url_for('admin_login'))
+        return super(MyAdminIndexView, self).index()
 
 FAILED_LOGINS = {}
 MAX_FAILED = 5
@@ -217,6 +244,76 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
 @app.route("/")
 def home():
     return render_template('test.html')
+
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        # 檢查帳號和密碼
+        if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session['is_admin'] = True
+            flash('登入成功！', 'success')
+            return redirect(url_for('admin.index')) # 導向到後台首頁
+        else:
+            flash('帳號或密碼錯誤。', 'danger')
+            
+    # 如果已經登入，直接導向後台
+    if session.get('is_admin'):
+        return redirect(url_for('admin.index'))
+
+    # 顯示登入表單 (使用 render_template_string 直接渲染 HTML，無需額外檔案)
+    return render_template_string('''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Admin Login</title>
+            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+        </head>
+        <body class="bg-light">
+            <div class="container mt-5">
+                <div class="row">
+                    <div class="col-md-6 offset-md-3">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>後台登入</h3>
+                            </div>
+                            <div class="card-body">
+                                {% with messages = get_flashed_messages(with_categories=true) %}
+                                  {% if messages %}
+                                    {% for category, message in messages %}
+                                      <div class="alert alert-{{ category }}" role="alert">
+                                        {{ message }}
+                                      </div>
+                                    {% endfor %}
+                                  {% endif %}
+                                {% endwith %}
+                                <form method="POST">
+                                    <div class.form-group">
+                                        <label for="username">帳號</label>
+                                        <input type="text" class="form-control" name="username" required>
+                                    </div>
+                                    <div class="form-group mt-3">
+                                        <label for="password">密碼</label>
+                                        <input type="password" class="form-control" name="password" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary mt-4">登入</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    ''')
+
+@app.route('/admin-logout')
+def admin_logout():
+    session.pop('is_admin', None) # 清除 session
+    flash('您已成功登出。', 'success')
+    return redirect(url_for('admin_login'))
 
 @app.route("/api/captcha", methods=["GET"])
 def get_captcha():
@@ -769,11 +866,17 @@ def callback_google_api():
         db.session.rollback()
         save_log(f"Google 回調處理發生錯誤：{e}")
         return jsonify({'message': '伺服器內部錯誤'}), 500
+    
+    
+admin = Admin(app, name='Justus 的後台', template_mode='bootstrap4', index_view=MyAdminIndexView(name='首頁'))
+admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
+admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
+admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    print(f"Starting gevent WSGIServer on 0.0.0.0:{port}...")
-    
-    http_server = WSGIServer(('0.0.0.0', port), app)
-    
-    http_server.serve_forever()
+    # 注意：PORT 10000 可能會被某些系統阻擋，如果 10000 連不上，請改用 5000
+    port = int(os.environ.get("PORT", 10000)) 
+    print(f"Starting Flask development server on http://127.0.0.1:{port}...")
+
+    # 使用 Flask 內建的伺服器來執行
+    app.run(host='0.0.0.0', port=port, debug=True)

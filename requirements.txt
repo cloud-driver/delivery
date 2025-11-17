@@ -10,3 +10,5 @@ gunicorn
 python-dotenv
 flask-cors
 gevent
+flask_admin
+PyMySQL
