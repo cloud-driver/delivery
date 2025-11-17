@@ -9,7 +9,7 @@ import hashlib
 import base64
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -119,7 +119,7 @@ def get_user_jwt(user_object: User):
     access_token_payload = {
         'user': user_object.username if user_object.username else str(user_object.id),
         'id': user_object.id,
-        'exp': datetime.now(datetime.UTC) + timedelta(minutes=30)
+        'exp': datetime.now(timezone.utc) + timedelta(minutes=30)
     }
     return jwt.encode(access_token_payload, app.config['SECRET_KEY'], algorithm='HS256')
 
