@@ -9,6 +9,9 @@ import hashlib
 import base64
 import os
 import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for, render_template_string, flash
@@ -22,6 +25,7 @@ from flask_cors import CORS
 #from gevent.pywsgi import WSGIServer
 from flask_admin import Admin, BaseView, expose, AdminIndexView
 from flask_admin.contrib.sqla import ModelView
+from itsdangerous import BadSignature, URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
 
 db = SQLAlchemy()
 
@@ -41,7 +45,29 @@ app.config['FLASK_ADMIN_SWATCH'] = 'cerulean'
 ADMIN_USERNAME = safe_getenv('ADMIN_USER')
 ADMIN_PASSWORD_HASH = generate_password_hash(safe_getenv('ADMIN_PASS'))
 
+# Email 寄送設定
+EMAIL_SENDER = safe_getenv('EMAIL_SENDER')
+EMAIL_PASSWORD = safe_getenv('EMAIL_PASSWORD')
+
+# LINE 配置
+CLIENT_ID = safe_getenv('LINE_LOGIN_CHANNEL_ID')
+CLIENT_SECRET = safe_getenv('LINE_LOGIN_CHANNEL_SECRET')
+URL_BASE = safe_getenv('URL')
+LINE_REDIRECT_URI = f"{URL_BASE}/api/callback/line"
+
+# Google 配置
+GOOGLE_CLIENT_ID = safe_getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = safe_getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = f"{URL_BASE}/api/callback/google"
+
+# Google OAuth 2.0
+GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+
 db.init_app(app)
+
+s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
 class AdminModelView(ModelView):
 
@@ -63,21 +89,6 @@ class MyAdminIndexView(AdminIndexView):
 FAILED_LOGINS = {}
 MAX_FAILED = 5
 LOCK_TIME = timedelta(minutes=5)
-
-# LINE 配置
-CLIENT_ID = safe_getenv('LINE_LOGIN_CHANNEL_ID')
-CLIENT_SECRET = safe_getenv('LINE_LOGIN_CHANNEL_SECRET')
-URL_BASE = safe_getenv('URL')
-LINE_REDIRECT_URI = f"{URL_BASE}/api/callback/line"
-
-# Google 配置
-GOOGLE_CLIENT_ID = safe_getenv('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = safe_getenv('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = f"{URL_BASE}/api/callback/google"
-
-# Google OAuth 2.0
-GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/auth"
-GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -116,6 +127,32 @@ def save_log_to_db(content):
 
 def save_log(content):
     save_log_to_db(content)
+
+def send_email(subject, body, to_email):
+    from_email = EMAIL_SENDER
+    password = EMAIL_PASSWORD
+
+    if not from_email or not password:
+        save_log("Email 發送失敗：未設定 EMAIL_SENDER 或 EMAIL_PASSWORD")
+        return False
+
+    msg = MIMEMultipart()
+    msg['From'] = from_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(from_email, password)
+        text = msg.as_string()
+        
+        server.sendmail(from_email, to_email, text)
+        server.quit()
+        return True
+    except Exception as e:
+        save_log(f"Email 發送失敗 (to: {to_email}): {e}")
+        return False
 
 with app.app_context():
     db.create_all()
@@ -283,7 +320,7 @@ def admin_login():
                                   {% endif %}
                                 {% endwith %}
                                 <form method="POST">
-                                    <div class.form-group">
+                                    <div class="form-group">
                                         <label for="username">帳號</label>
                                         <input type="text" class="form-control" name="username" required>
                                     </div>
@@ -310,6 +347,7 @@ def admin_logout():
 
 @app.route("/api/captcha", methods=["GET"])
 def get_captcha():
+    # 登入需要驗證碼，所以此 API 保持不變
     image_gen = ImageCaptcha(width=160, height=60)
     chars = string.ascii_uppercase + string.digits
     captcha_text = ''.join(random.choices(chars, k=5))
@@ -339,39 +377,113 @@ def register():
     username = data.get("username")
     password = data.get("password")
     confirm = data.get("confirm_password")
-    captcha_input = data.get("captcha_answer")
-    captcha_token = data.get("captcha_token")
+    email = data.get("email")
 
-    if not verify_captcha(captcha_input, captcha_token):
-        return jsonify({'message': '驗證碼錯誤或已過期', 'error_code': 'CAPTCHA_FAIL'}), 400
+    if not username or not password or not email:
+        return jsonify({'message': '帳號、密碼與 Email 不可為空', 'error_code': 'EMPTY_FIELDS'}), 400
 
-    if not username or not password:
-        return jsonify({'message': '帳號與密碼不可為空', 'error_code': 'EMPTY_FIELDS'}), 400
+    if not email.endswith('@gmail.com'):
+         return jsonify({'message': '目前僅支援 @gmail.com 註冊', 'error_code': 'GMAIL_ONLY'}), 400
 
     if password != confirm:
         return jsonify({'message': '兩次密碼輸入不一致', 'error_code': 'PASSWORD_MISMATCH'}), 400
     
-    if User.query.filter_by(username=username).first():
+    if User.query.filter((User.username == username) | (User.email == email)).first():
         return jsonify({
-            'message': '此帳號已經被註冊過了，請直接登入',
+            'message': '此帳號或 Email 已經被註冊過了',
             'error_code': 'USER_EXISTS' 
         }), 409
 
     try:
-        new_user = User(username=username, password_hash=generate_password_hash(password))
-        db.session.add(new_user)
-        db.session.commit()
-        save_log_to_db(f"API 註冊成功: {username}")
+        password_hash = generate_password_hash(password)
+        
+        data_to_sign = {
+            'username': username, 
+            'password_hash': password_hash, 
+            'email': email
+        }
+        token = s.dumps(data_to_sign, salt='email-confirm')
+        
+        if not URL_BASE:
+             save_log("註冊失敗：未設定 URL_BASE 環境變數")
+             return jsonify({'message': '伺服器設定錯誤', 'error_code': 'CONFIG_ERROR'}), 500
+             
+        verification_url = f"{URL_BASE}/api/verify-email/{token}"
+        
+        email_subject = "【e-system-delivery】請驗證您的 Email"
+        email_body = f"""
+        您好 {username}，
+
+        感謝您註冊本服務。
+        請點擊以下連結以完成 Email 驗證並啟用您的帳號 (連結 1 小時內有效)：
+
+        {verification_url}
+
+        如果您未進行此註冊，請忽略本信件。
+        """
+
+        if not send_email(email_subject, email_body, email):
+            save_log_to_db(f"API 註冊 {username} 失敗：Email 發送失敗")
+            return jsonify({'message': '註冊失敗：無法發送驗證信', 'error_code': 'EMAIL_SEND_FAIL'}), 500
+
+        save_log_to_db(f"API 註冊 {username} ({email})：驗證信已寄出")
 
         return jsonify({
-            'message': '註冊成功',
+            'message': '註冊請求成功，請至您的 Gmail 信箱點擊驗證連結以啟用帳號。',
+            'username': username
+        }), 202
+        
+    except Exception as e:
+        db.session.rollback()
+        save_log_to_db(f"API 註冊失敗 (Catch): {username} - {e}")
+        return jsonify({'message': '伺服器錯誤，請稍後再試', 'error_code': 'SERVER_ERROR'}), 500
+
+@app.route("/api/verify-email/<token>", methods=["GET"])
+def verify_email(token):
+    try:
+        data = s.loads(token, salt='email-confirm', max_age=3600)
+    except SignatureExpired:
+        save_log(f"Email 驗證失敗：Token 已過期 ({token[:10]}...)")
+        return jsonify({'message': '驗證連結已過期，請重新註冊。'}), 400
+    except (BadTimeSignature, BadSignature):
+        save_log(f"Email 驗證失敗：Token 無效 ({token[:10]}...)")
+        return jsonify({'message': '驗證連結無效。'}), 400
+    
+    username = data.get('username')
+    email = data.get('email')
+    password_hash = data.get('password_hash')
+
+    if not username or not email or not password_hash:
+         save_log(f"Email 驗證失敗：Token 資料不完整 ({token[:10]}...)")
+         return jsonify({'message': '驗證連結資料不完整。'}), 400
+
+    if User.query.filter((User.username == username) | (User.email == email)).first():
+        save_log(f"Email 驗證 {username} 失敗：帳號或 Email 已存在")
+        return jsonify({
+            'message': '驗證失敗：此帳號或 Email 已經被註冊過了',
+            'error_code': 'USER_EXISTS' 
+        }), 409
+
+    try:
+        new_user = User(
+            username=username, 
+            password_hash=password_hash,
+            email=email,
+            display_name=username
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        save_log_to_db(f"Email 驗證成功並建立帳號: {username} ({email})")
+
+        return jsonify({
+            'message': 'Email 驗證成功，您的帳號已啟用！歡迎登入。',
             'username': username
         }), 201
         
     except Exception as e:
         db.session.rollback()
-        save_log_to_db(f"API 註冊失敗: {username} - {e}")
-        return jsonify({'message': '伺服器錯誤，請稍後再試', 'error_code': 'SERVER_ERROR'}), 500
+        save_log_to_db(f"Email 驗證 {username} 失敗 (DB): {e}")
+        return jsonify({'message': '伺服器錯誤，帳號建立失敗', 'error_code': 'SERVER_ERROR'}), 500
 
 @app.route("/api/login", methods=["POST"])
 def login():

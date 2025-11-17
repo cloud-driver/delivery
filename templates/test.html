@@ -41,7 +41,7 @@
             <input type="text" id="reg-username" placeholder="註冊用帳號">
             <input type="password" id="reg-password" placeholder="註冊用密碼">
             <input type="password" id="reg-confirm" placeholder="確認密碼">
-            <input type="text" id="reg-captcha" placeholder="輸入上方驗證碼">
+            <input type="text" id="reg-email" placeholder="註冊用 Gmail (例如: user@gmail.com)">
             <button id="btn-register">註冊 (Register)</button>
             <hr style="margin: 20px 0;">
 
@@ -140,8 +140,7 @@
                 username: document.getElementById('reg-username').value,
                 password: document.getElementById('reg-password').value,
                 confirm_password: document.getElementById('reg-confirm').value,
-                captcha_answer: document.getElementById('reg-captcha').value,
-                captcha_token: captchaToken
+                email: document.getElementById('reg-email').value
             };
             
             try {
@@ -152,7 +151,7 @@
                 });
                 const data = await response.json();
                 displayResponse(data);
-                loadCaptcha(); // 刷新驗證碼
+                loadCaptcha(); 
             } catch (error) {
                 displayResponse({ error: "註冊失敗", details: error.message });
             }
