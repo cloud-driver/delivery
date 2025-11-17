@@ -868,7 +868,7 @@ def callback_google_api():
         return jsonify({'message': '伺服器內部錯誤'}), 500
     
     
-admin = Admin(app, name='Justus 的後台', template_mode='bootstrap4', index_view=MyAdminIndexView(name='首頁'))
+admin = Admin(app, name='Justus 的後台', index_view=MyAdminIndexView(name='首頁'))
 admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
 admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
 admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
@@ -879,4 +879,4 @@ if __name__ == "__main__":
     print(f"Starting Flask development server on http://127.0.0.1:{port}...")
 
     # 使用 Flask 內建的伺服器來執行
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port)
