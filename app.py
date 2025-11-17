@@ -445,6 +445,7 @@ def link_line_init(current_user: User):
         f"&redirect_uri={LINE_REDIRECT_URI}"
         f"&scope=openid%20profile%20email"
         f"&state={state}"
+        f"&bot_prompt=normal"
     )
     
     return jsonify({
@@ -517,6 +518,7 @@ def login_line_init():
         f"&redirect_uri={LINE_REDIRECT_URI}"
         f"&scope=openid%20profile%20email"
         f"&state={state}"
+        f"&bot_prompt=normal"
     )
     return jsonify({'auth_url': login_url}), 200
 
