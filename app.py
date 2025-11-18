@@ -275,7 +275,7 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
 
 @app.route("/")
 def home():
-    return render_template('test.html')
+    return redirect(f"{FRONTEND_URL}")
 
 @app.route('/admin-login', methods=['GET', 'POST'])
 def admin_login():
@@ -408,7 +408,7 @@ def register():
              
         verification_url = f"{URL_BASE}/api/verify-email/{token}"
         
-        email_subject = "【Justus 的 API】請驗證您的 Email"
+        email_subject = "【e-system-delivery】請驗證您的 Email"
         email_body = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
             <h2 style="color: #333;">歡迎加入，{username}！</h2>
@@ -968,7 +968,7 @@ def callback_google_api():
         return jsonify({'message': '伺服器內部錯誤'}), 500
     
     
-admin = Admin(app, name='Justus 的後台', index_view=MyAdminIndexView(name='首頁'))
+admin = Admin(app, name='e-system-delivery 的後台', index_view=MyAdminIndexView(name='首頁'))
 admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
 admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
 admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
