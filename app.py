@@ -62,7 +62,8 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 # 前端 URL（用於電子郵件中的連結）
 FRONTEND_URL = safe_getenv('FRONTEND_URL')
-
+FAILED_REGISTRATIONS = {}
+MAX_REGISTER_FAIL = 3
 
 db.init_app(app)
 
@@ -273,6 +274,26 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
     db.session.commit()
     return user, None 
 
+def get_client_ip():
+    """取得客戶端真實 IP (支援 Render/Proxy 環境)"""
+    if request.headers.getlist("X-Forwarded-For"):
+        return request.headers.getlist("X-Forwarded-For")[0]
+    return request.remote_addr
+
+def record_register_fail(ip):
+    """記錄該 IP 的註冊失敗次數"""
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    
+    if ip not in FAILED_REGISTRATIONS:
+        FAILED_REGISTRATIONS[ip] = {'count': 1, 'date': today_str}
+    else:
+        record = FAILED_REGISTRATIONS[ip]
+        if record['date'] != today_str:
+            record['date'] = today_str
+            record['count'] = 1
+        else:
+            record['count'] += 1
+
 @app.route("/")
 def home():
     return redirect(f"{FRONTEND_URL}")
@@ -368,8 +389,23 @@ def get_captcha():
 
 @app.route("/api/register", methods=["POST"])
 def register():
+    # 1. 取得 IP
+    client_ip = get_client_ip()
+    today_str = datetime.now().strftime('%Y-%m-%d')
+
+    # 2. 檢查是否被封鎖
+    if client_ip in FAILED_REGISTRATIONS:
+        record = FAILED_REGISTRATIONS[client_ip]
+        if record['date'] == today_str and record['count'] >= MAX_REGISTER_FAIL:
+            save_log_to_db(f"註冊阻擋：IP {client_ip} 因失敗次數過多被暫時封鎖")
+            return jsonify({
+                'message': '今日註冊失敗次數過多，您的 IP 已被暫時封鎖，請明日再試。',
+                'error_code': 'IP_BLOCKED'
+            }), 403
+
     data = request.get_json()
     if not data:
+        record_register_fail(client_ip)
         return jsonify({'message': '無效的 JSON 資料', 'error_code': 'INVALID_JSON'}), 400
 
     username = data.get("username")
@@ -378,15 +414,19 @@ def register():
     email = data.get("email")
 
     if not username or not password or not email:
+        record_register_fail(client_ip)
         return jsonify({'message': '帳號、密碼與 Email 不可為空', 'error_code': 'EMPTY_FIELDS'}), 400
 
     if not email.endswith('@gmail.com'):
+         record_register_fail(client_ip)
          return jsonify({'message': '目前僅支援 @gmail.com 註冊', 'error_code': 'GMAIL_ONLY'}), 400
 
     if password != confirm:
+        record_register_fail(client_ip)
         return jsonify({'message': '兩次密碼輸入不一致', 'error_code': 'PASSWORD_MISMATCH'}), 400
     
     if User.query.filter((User.username == username) | (User.email == email)).first():
+        record_register_fail(client_ip)
         return jsonify({
             'message': '此帳號或 Email 已經被註冊過了',
             'error_code': 'USER_EXISTS' 
@@ -404,6 +444,7 @@ def register():
         
         if not URL_BASE:
              save_log("註冊失敗：未設定 URL_BASE 環境變數")
+             record_register_fail(client_ip)
              return jsonify({'message': '伺服器設定錯誤', 'error_code': 'CONFIG_ERROR'}), 500
              
         verification_url = f"{URL_BASE}/api/verify-email/{token}"
@@ -430,9 +471,10 @@ def register():
         """
         if not send_email(email_subject, email_body, email):
             save_log_to_db(f"API 註冊 {username} 失敗：Email 發送失敗")
+            record_register_fail(client_ip)
             return jsonify({'message': '註冊失敗：無法發送驗證信', 'error_code': 'EMAIL_SEND_FAIL'}), 500
 
-        save_log_to_db(f"API 註冊 {username} ({email})：驗證信已寄出")
+        save_log_to_db(f"API 註冊 {username} ({email})：驗證信已寄出 (IP: {client_ip})")
 
         return jsonify({
             'message': '註冊請求成功，請至您的 Gmail 信箱點擊驗證按鈕以啟用帳號。',
@@ -442,6 +484,7 @@ def register():
     except Exception as e:
         db.session.rollback()
         save_log_to_db(f"API 註冊失敗 (Catch): {username} - {e}")
+        record_register_fail(client_ip)
         return jsonify({'message': '伺服器錯誤，請稍後再試', 'error_code': 'SERVER_ERROR'}), 500
 
 @app.route("/api/verify-email/<token>", methods=["GET"])
