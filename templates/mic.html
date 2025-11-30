@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STT 語音測試</title>
+    <style>
+        /* --- 頁面基礎設定 --- */
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: radial-gradient(circle at center, #2b323b 0%, #1a1c20 100%);
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            flex-direction: column; /* 改為垂直排列以容納結果文字 */
+        }
+
+        /* --- 容器 --- */
+        .container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            margin-bottom: 2rem;
+        }
+
+        /* --- 麥克風按鈕主體 --- */
+        .mic-btn {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: #e0e5ec;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 
+                6px 6px 12px #121417, 
+                -6px -6px 12px #3e4854;
+            z-index: 10;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* --- 麥克風圖標 (SVG) --- */
+        .mic-icon {
+            width: 40px;
+            height: 40px;
+            fill: #555;
+            transition: fill 0.3s ease, transform 0.3s ease;
+        }
+
+        /* --- 按鈕被點擊/啟動後的狀態 (Active Class) --- */
+        .mic-btn.active {
+            background: #ff4757;
+            box-shadow: 
+                inset 6px 6px 12px #b8333e, 
+                inset -6px -6px 12px #ff5b70;
+            transform: scale(0.95);
+        }
+
+        .mic-btn.active .mic-icon {
+            fill: white;
+            transform: scale(1.1);
+        }
+        
+        /* Loading 狀態 */
+        .mic-btn.loading {
+            background: #f1c40f; /* 黃色表示處理中 */
+            pointer-events: none;
+        }
+        .mic-btn.loading .mic-icon {
+            fill: white;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* --- 動畫波紋 (預設隱藏) --- */
+        .pulse-ring {
+            position: absolute;
+            top: 50px; /* 修正定位 */
+            left: 50px;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: transparent;
+            border: 2px solid rgba(255, 71, 87, 0.5);
+            box-sizing: border-box;
+            opacity: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .mic-btn.active ~ .pulse-ring {
+            animation: ripple 2s linear infinite;
+        }
+
+        .mic-btn.active ~ .pulse-ring:nth-child(2) { animation-delay: 0s; }
+        .mic-btn.active ~ .pulse-ring:nth-child(3) { animation-delay: 0.5s; }
+        .mic-btn.active ~ .pulse-ring:nth-child(4) { animation-delay: 1.0s; }
+        .mic-btn.active ~ .pulse-ring:nth-child(5) { animation-delay: 1.5s; }
+
+        @keyframes ripple {
+            0% {
+                width: 100px;
+                height: 100px;
+                opacity: 0.8;
+                border-width: 4px;
+            }
+            100% {
+                width: 300px;
+                height: 300px;
+                opacity: 0;
+                border-width: 0px;
+            }
+        }
+
+        /* --- 狀態與結果文字 --- */
+        .status-wrapper {
+            height: 20px;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .status-text {
+            color: #888;
+            font-size: 14px;
+            letter-spacing: 1px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .mic-btn.active ~ .status-wrapper .status-text {
+            opacity: 1;
+            animation: blink 1.5s infinite;
+            color: #ff4757;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* --- 結果顯示區 --- */
+        .result-box {
+            margin-top: 2rem;
+            width: 80%;
+            max-width: 600px;
+            min-height: 100px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            color: #e0e5ec;
+            font-size: 1.2rem;
+            line-height: 1.6;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.3s;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <button class="mic-btn" id="micBtn">
+            <svg class="mic-icon" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+        </button>
+
+        <span class="pulse-ring"></span>
+        <span class="pulse-ring"></span>
+        <span class="pulse-ring"></span>
+        <span class="pulse-ring"></span>
+
+        <div class="status-wrapper">
+            <div class="status-text" id="statusText">正在聆聽...</div>
+        </div>
+    </div>
+
+    <div class="result-box" id="resultBox">
+        點擊麥克風開始說話
+    </div>
+
+    <script>
+        // 設定你的 API 網址
+        // 如果在本機測試 Flask，請改為 'http://127.0.0.1:10000/api/ai/stt'
+        //const API_URL = 'https://delivery-wqwi.onrender.com/api/ai/stt'; 
+        const API_URL = 'http://127.0.0.1:10000/api/ai/stt'; 
+
+        const micBtn = document.getElementById('micBtn');
+        const statusText = document.getElementById('statusText');
+        const resultBox = document.getElementById('resultBox');
+
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        micBtn.addEventListener('click', async () => {
+            if (micBtn.classList.contains('loading')) return;
+
+            if (!isRecording) {
+                // --- 開始錄音 ---
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = event => {
+                        audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = processAudio;
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    
+                    // UI 更新
+                    micBtn.classList.add('active');
+                    statusText.textContent = "正在聆聽...";
+                    resultBox.textContent = "錄音中...";
+                    resultBox.style.borderColor = "#ff4757";
+
+                } catch (err) {
+                    console.error("無法取得麥克風權限:", err);
+                    alert("無法存取麥克風，請確認權限設定。");
+                }
+            } else {
+                // --- 停止錄音 ---
+                mediaRecorder.stop();
+                isRecording = false;
+                
+                // 停止所有音軌 (釋放麥克風紅點)
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+
+                // UI 更新
+                micBtn.classList.remove('active');
+                micBtn.classList.add('loading'); // 進入讀取狀態
+                statusText.style.opacity = '0';
+                resultBox.textContent = "辨識中...";
+                resultBox.style.borderColor = "#f1c40f";
+            }
+        });
+
+        async function processAudio() {
+            // 1. 將錄音片段組合成 Blob (WebM 格式)
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // 2. 轉成 Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            
+            reader.onloadend = async () => {
+                const base64String = reader.result; // 這會包含 "data:audio/webm;base64,..."
+
+                try {
+                    // 3. 發送 API 請求
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            audio_base64: base64String
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    // 4. 顯示結果
+                    if (response.ok) {
+                        resultBox.textContent = data.text || "（沒有辨識出文字）";
+                        resultBox.style.borderColor = "#2ecc71"; // 成功綠色
+                    } else {
+                        resultBox.textContent = "錯誤: " + (data.error || "未知錯誤");
+                        resultBox.style.borderColor = "red";
+                    }
+
+                } catch (error) {
+                    console.error("API Error:", error);
+                    resultBox.textContent = "連線錯誤，請檢查網路或伺服器狀態。";
+                    resultBox.style.borderColor = "red";
+                } finally {
+                    micBtn.classList.remove('loading');
+                }
+            };
+        }
+    </script>
+
+</body>
+</html>

@@ -1,7 +1,7 @@
 services:
   - type: web
-    name: gripmind-api
-    env: python
-    buildCommand: ""
-    startCommand: gunicorn app:app
+    name: e-system-delivery
+    env: docker  # 修改這裡：原本是 python，改成 docker
+    plan: standard # 如果你是 Pro/Standard 方案請保留，免費版可刪除此行
+    branch: main   # 確保這是你的分支名稱
     autoDeploy: true

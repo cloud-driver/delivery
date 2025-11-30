@@ -13,3 +13,5 @@ gevent
 flask_admin
 PyMySQL
 itsdangerous
+google-cloud-speech
+google-generativeai

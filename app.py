@@ -22,6 +22,12 @@ from flask_cors import CORS
 from flask_admin import Admin, BaseView, expose, AdminIndexView
 from flask_admin.contrib.sqla import ModelView
 from itsdangerous import BadSignature, URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
+from google.cloud import speech
+from google.oauth2 import service_account
+import json
+import subprocess
+import tempfile
+import time
 
 db = SQLAlchemy()
 
@@ -59,6 +65,9 @@ GOOGLE_REDIRECT_URI = f"{URL_BASE}/api/callback/google"
 # Google OAuth 2.0
 GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+# 微調 LLM API 配置
+# LLM_API_URL = safe_getenv('LLM_API_URL')
 
 # 前端 URL（用於電子郵件中的連結）
 FRONTEND_URL = safe_getenv('FRONTEND_URL')
@@ -116,6 +125,13 @@ class OAuthState(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
+def get_speech_client():
+    creds_json = os.environ.get('GOOGLE_STT')
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        credentials = service_account.Credentials.from_service_account_info(creds_dict)
+        return speech.SpeechClient(credentials=credentials)
+    return speech.SpeechClient()
 
 def save_log_to_db(content):
     try:
@@ -222,12 +238,8 @@ def token_required(f):
 def find_user_by_identity(login_type, user_id=None, email=None):
     if login_type == 'line' and user_id:
         return User.query.filter_by(line_user_id=user_id).first()
-    elif login_type == 'google' and (user_id or email):
-        user = User.query.filter_by(google_user_id=user_id).first()
-        if not user and email:
-            # UNSAFE
-            user = User.query.filter_by(email=email).first() 
-        return user
+    elif login_type == 'google' and user_id:
+        return User.query.filter_by(google_user_id=user_id).first()
     return None
 
 def update_user_profile(user_id=None, login_type=None, provider_id=None, display_name=None, email=None, username=None, linking_user: User=None):
@@ -245,6 +257,11 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
         is_new_user = not user
         
         if not user:
+            if email:
+                existing_email_user = User.query.filter_by(email=email).first()
+                if existing_email_user:
+                    return None, f"此 Email ({email}) 已註冊過。為確保安全，請先使用帳號密碼登入後，至個人設定頁面進行帳號綁定。"
+
             final_username = username
             if final_username and User.query.filter_by(username=final_username).first():
                 final_username = f"user_{secrets.token_hex(4)}"
@@ -272,7 +289,7 @@ def update_user_profile(user_id=None, login_type=None, provider_id=None, display
         user.display_name = display_name
         
     db.session.commit()
-    return user, None 
+    return user, None
 
 def get_client_ip():
     """取得客戶端真實 IP (支援 Render/Proxy 環境)"""
@@ -298,6 +315,14 @@ def record_register_fail(ip):
 def home():
     return redirect(f"{FRONTEND_URL}")
 
+@app.route("/health")
+def health_check():
+    return "OK", 200
+
+@app.route('/mic-test')
+def mic_test():
+    return render_template('mic.html')
+
 @app.route('/admin-login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -314,50 +339,7 @@ def admin_login():
     if session.get('is_admin'):
         return redirect(url_for('admin.index'))
 
-    return render_template_string('''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Admin Login</title>
-            <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-        </head>
-        <body class="bg-light">
-            <div class="container mt-5">
-                <div class="row">
-                    <div class="col-md-6 offset-md-3">
-                        <div class="card">
-                            <div class="card-header">
-                                <h3>後台登入</h3>
-                            </div>
-                            <div class="card-body">
-                                {% with messages = get_flashed_messages(with_categories=true) %}
-                                  {% if messages %}
-                                    {% for category, message in messages %}
-                                      <div class="alert alert-{{ category }}" role="alert">
-                                        {{ message }}
-                                      </div>
-                                    {% endfor %}
-                                  {% endif %}
-                                {% endwith %}
-                                <form method="POST">
-                                    <div class="form-group">
-                                        <label for="username">帳號</label>
-                                        <input type="text" class="form-control" name="username" required>
-                                    </div>
-                                    <div class="form-group mt-3">
-                                        <label for="password">密碼</label>
-                                        <input type="password" class="form-control" name="password" required>
-                                    </div>
-                                    <button type="submit" class="btn btn-primary mt-4">登入</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-    ''')
+    return render_template('database_login.html')
 
 @app.route('/admin-logout')
 def admin_logout():
@@ -389,11 +371,9 @@ def get_captcha():
 
 @app.route("/api/register", methods=["POST"])
 def register():
-    # 1. 取得 IP
     client_ip = get_client_ip()
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # 2. 檢查是否被封鎖
     if client_ip in FAILED_REGISTRATIONS:
         record = FAILED_REGISTRATIONS[client_ip]
         if record['date'] == today_str and record['count'] >= MAX_REGISTER_FAIL:
@@ -1010,7 +990,198 @@ def callback_google_api():
         save_log(f"Google 回調處理發生錯誤：{e}")
         return jsonify({'message': '伺服器內部錯誤'}), 500
     
+@app.route('/api/ai/stt', methods=['POST'])
+def stt():
+    data = request.get_json()
+    if not data or 'audio_base64' not in data:
+        return jsonify({"error": "Missing audio_base64"}), 400
+
+    temp_input_path = None
+    temp_wav_path = None
+
+    try:
+        audio_data = data['audio_base64']
+        if "," in audio_data:
+            audio_data = audio_data.split(",")[1]
+        audio_bytes = base64.b64decode(audio_data)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".dat") as temp_input:
+            temp_input.write(audio_bytes)
+            temp_input_path = temp_input.name
+
+        temp_wav_path = temp_input_path + "_converted.wav"
+
+        # -i: 輸入
+        # -ar 16000: 取樣率 16kHz
+        # -ac 1: 單聲道
+        # -c:a pcm_s16le: 16-bit PCM 編碼
+        # -y: 若檔案存在則覆蓋
+        command = [
+            'ffmpeg', '-y',
+            '-i', temp_input_path,
+            '-ar', '16000',
+            '-ac', '1',
+            '-c:a', 'pcm_s16le',
+            temp_wav_path
+        ]
+        
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        with open(temp_wav_path, "rb") as wav_file:
+            converted_content = wav_file.read()
+
+        client = get_speech_client()
+        audio = speech.RecognitionAudio(content=converted_content)
+        config = speech.RecognitionConfig(
+            language_code="zh-TW",
+            enable_automatic_punctuation=True,
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000,
+            audio_channel_count=1
+        )
+
+        response = client.recognize(config=config, audio=audio)
+
+        text = ""
+        for result in response.results:
+            text += result.alternatives[0].transcript
+
+        return jsonify({"text": text}), 200
+
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpeg conversion failed: {e.stderr.decode()}")
+        return jsonify({"error": "Audio conversion failed. Please ensure the file is valid."}), 400
+    except Exception as e:
+        print(f"STT Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+        
+    finally:
+        if temp_input_path and os.path.exists(temp_input_path):
+            os.remove(temp_input_path)
+        if temp_wav_path and os.path.exists(temp_wav_path):
+            os.remove(temp_wav_path)
+
+@app.route('/api/ai/stt/mock', methods=['POST'])
+def mock_stt():
+    """
+    這是一個假的 STT API，用於前端測試。
+    它不處理音檔，只會模擬延遲並回傳隨機文字。
+    """
+    data = request.get_json()
+    if not data or 'audio_base64' not in data:
+        return jsonify({"error": "Missing audio_base64"}), 400
     
+    time.sleep(random.uniform(1.0, 2.5))
+    
+    mock_messages = [
+        "這是一個測試回應，你的麥克風運作正常！",
+        "我聽到了，但我是假的 AI，所以我不知道你在說什麼。",
+        "測試成功！前端樣式看起來不錯喔。",
+        "Hello World! 這是後端隨機回傳的字串。",
+        "系統運作正常，請繼續開發您的應用程式。"
+    ]
+    
+    return jsonify({
+        "text": random.choice(mock_messages)
+    })
+
+@app.route('/api/ai/recommend', methods=['POST'])
+def recommend_restaurants():
+    """
+    API: 接收前端傳來的 User Input 與 Tags，回傳推薦餐廳
+    支援 Mock Data 與 自定義 LLM API
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'message': '無效的 JSON 資料'}), 400
+
+    user_input = data.get('user_input', '')
+    user_tags = data.get('user_tags', [])
+    
+    # --- 1. 串接準備：建立 Prompt ---
+    tags_str = ", ".join(user_tags)
+    prompt = f"""
+    你是專業的美食推薦助手。
+    使用者的需求是："{user_input}"
+    使用者的偏好標籤是：[{tags_str}]
+    
+    請根據上述資訊，從資料庫中推薦 3 間最適合的餐廳。
+    請直接回傳 JSON 格式，包含 id, name, description, rating, image_url, tags。
+    """
+    
+    # if LLM_API_URL:
+    #     try:
+    #         payload = {
+    #             "prompt": prompt,
+    #             "max_tokens": 500,
+    #             "temperature": 0.7
+    #             # "user_id": current_user.id
+    #         }
+    #         
+    #         headers = {"Content-Type": "application/json"}
+    #         response = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=30)
+    #         response.raise_for_status()
+    #
+    #         result_data = response.json()
+    #         return jsonify(result_data)
+    #
+    #     except requests.exceptions.RequestException as e:
+    #         print(f"LLM API Connection Error: {e}")
+    #         return jsonify({'error': 'AI Service Unavailable'}), 503
+
+    time.sleep(1.5)
+    
+    mock_response = {
+        "status": "success",
+        "data": {
+            "user_intent_analysis": f"偵測到你想吃：{user_input} (偏好: {tags_str})",
+            "recommendations": [
+                {
+                    "id": 101,
+                    "name": "健康輕食餐盒",
+                    "description": "低油低鹽，健康無負擔，適合注重養生的您。",
+                    "image_url": "https://placehold.co/600x400?text=Healthy+Food",
+                    "tags": ["健康", "水煮", "低卡"],
+                    "rating": 4.8,
+                    "delivery_time": "25-35 min"
+                },
+                {
+                    "id": 102,
+                    "name": "日式清爽烏龍麵",
+                    "description": "柴魚高湯熬煮，口感清爽不油膩，搭配新鮮炸蝦。",
+                    "image_url": "https://placehold.co/600x400?text=Udon",
+                    "tags": ["日式", "麵食", "清淡"],
+                    "rating": 4.5,
+                    "delivery_time": "30-40 min"
+                },
+                {
+                    "id": 103,
+                    "name": "川味麻辣燙 (測試標籤)",
+                    "description": "正宗四川口味，香辣過癮，挑戰你的味蕾極限。",
+                    "image_url": "https://placehold.co/600x400?text=Spicy+Hotpot",
+                    "tags": ["辣味", "重口味", "宵夜"],
+                    "rating": 4.2,
+                    "delivery_time": "40-50 min"
+                }
+            ]
+        }
+    }
+    
+    return jsonify(mock_response), 200
+
+@app.route('/api/pay')
+def pay():
+    data = request.get_json()
+    order_id = data.get('order_id')
+    # 這裡會是支付邏輯
+    # 這裡會更新資料庫中的訂單狀態
+    # 這裡要通知商家和用戶支付成功
+    return jsonify({
+                    'message': '付款成功',
+                    'order_id': order_id,
+                    "status": "Paid"
+                }), 200
+
 admin = Admin(app, name='e-system-delivery 的後台', index_view=MyAdminIndexView(name='首頁'))
 admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
 admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
