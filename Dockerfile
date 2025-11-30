@@ -1,5 +1,5 @@
 # 使用輕量級的 Python 3.9
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # 設定工作目錄
 WORKDIR /app
