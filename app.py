@@ -170,8 +170,32 @@ def send_email(subject, body, to_email):
         save_log(f"Email 發送失敗 (to: {to_email}): {e}")
         return False
     
+admin = Admin(app, name='e-system-delivery 的後台', index_view=MyAdminIndexView(name='首頁'))
+admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
+admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
+admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
+    
 with app.app_context():
     db.create_all()
+    try:
+        db.reflect()
+        registered_tables = [User.__tablename__, Log.__tablename__, OAuthState.__tablename__]
+        for table_name, table in db.metadata.tables.items():
+            if table_name not in registered_tables:
+                model_name = ''.join([part.capitalize() for part in table_name.split('_')])
+                try:
+                    dynamic_model = type(model_name, (db.Model,), {
+                        '__table__': table,
+                        '__module__': __name__,
+                        '__mapper_args__': {'primary_key': [col for col in table.columns if col.primary_key]} 
+                    })
+                    admin.add_view(AdminModelView(dynamic_model, db.session, name=table_name))
+                    print(f"Auto-registered table: {table_name}")
+                except Exception as e:
+                    print(f"Failed to register table {table_name}: {e}")
+                    
+    except Exception as e:
+        print(f"Database reflection failed: {e}")
 
 def generate_captcha_hash(text):
     """將驗證碼文字雜湊，用於無狀態驗證"""
@@ -1181,11 +1205,6 @@ def pay():
                     'order_id': order_id,
                     "status": "Paid"
                 }), 200
-
-admin = Admin(app, name='e-system-delivery 的後台', index_view=MyAdminIndexView(name='首頁'))
-admin.add_view(AdminModelView(User, db.session, name='使用者管理'))
-admin.add_view(AdminModelView(Log, db.session, name='日誌紀錄'))
-admin.add_view(AdminModelView(OAuthState, db.session, name='OAuth 狀態'))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000)) 
