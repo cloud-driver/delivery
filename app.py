@@ -38,7 +38,7 @@ def safe_getenv(key, default=None):
 app = Flask(__name__)
 CORS(app)
 
-app.config['SECRET_KEY'] = secrets.token_hex(32)
+app.config['SECRET_KEY'] = safe_getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = safe_getenv('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_AS_ASCII'] = False
