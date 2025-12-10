@@ -1206,6 +1206,101 @@ def pay():
                     "status": "Paid"
                 }), 200
 
+@app.route('/api/ai/merchant/consultant', methods=['POST'])
+@token_required
+def merchant_consultant(current_user):
+    """
+    商業顧問 Agent：分析區域數據與外部趨勢，提供市場洞察。
+    """
+    data = request.get_json()
+    region = data.get('region', '西區')
+    category = data.get('category', '健康餐盒')
+    
+    # --- 2. 模擬數據層 (Mock Data Layer) ---
+    # 實務上這裡會從 DB 撈取該商家的歷史訂單，並透過爬蟲或 API 取得外部數據
+    
+    internal_stats = {
+        "monthly_orders": 1200,
+        "avg_ticket_price": 180,
+        "top_items": ["舒肥雞胸便當", "烤鯖魚飯"],
+        "customer_feedback_keywords": ["份量足", "配菜冷掉", "送餐慢"],
+        "peak_hours": "11:30-12:30"
+    }
+
+    external_market_data = {
+        "competitor_count_1km": 45,  # 同性質餐廳數量
+        "market_saturation_index": "High", # 市場飽和指標
+        "trending_flavors": ["剝皮辣椒", "藜麥", "低GI"], # 目前流行
+        "competitor_avg_price": 160, # 競品均價
+        "delivery_platform_hot_search": "溫沙拉"
+    }
+
+    # --- 3. 建構 Prompt ---
+    prompt = f"""
+    【角色設定】
+    你是一位擁有 20 年經驗的「餐飲商業數據顧問」。你的專長是透過數據找出商機漏洞。請根據以下數據，為位於「{region}」經營「{category}」的商家撰寫一份營運診斷報告。
+
+    【數據輸入】
+    1. 內部營運數據：
+        - 月訂單量：{internal_stats['monthly_orders']}
+        - 平均客單價：{internal_stats['avg_ticket_price']} (競品均價：{external_market_data['competitor_avg_price']})
+        - 熱銷商品：{", ".join(internal_stats['top_items'])}
+        - 客戶負評關鍵字：{", ".join(internal_stats['customer_feedback_keywords'])}
+
+    2. 外部市場數據 (Mock)：
+        - 周邊 1km 競品數：{external_market_data['competitor_count_1km']} 家
+        - 市場熱搜關鍵字：{external_market_data['delivery_platform_hot_search']}
+        - 爆紅口味趨勢：{", ".join(external_market_data['trending_flavors'])}
+
+    【輸出要求】
+    請直接回傳 JSON 格式 (不要 Markdown code block)，包含以下兩個欄位：
+    1. "market_warning" (市場飽和預警)：
+        - 分析競爭密度與價格競爭力。
+        - 如果競品多且價格低於我方，請發出「紅色警報」並給出具體原因。
+        - 語氣：嚴肅、警示。
+
+    2. "menu_suggestion" (菜單優化建議)：
+        - 結合「熱銷商品」與「爆紅口味趨勢」提出新菜色構想。
+        - 針對「客戶負評」提出具體的改善方案 (非空話)。
+        - 語氣：激勵、創意導向。
+    """
+
+    #呼叫AI
+    
+    time.sleep(2) # 模擬思考時間
+
+    #mock 回應
+    ai_response_mock = {
+        "status": "success",
+        "data": {
+            "market_warning": {
+                "level": "紅色警報 (Red Alert)",
+                "title": "市場進入高度殺價競爭階段",
+                "content": (
+                    f"目前 {region} 範圍內已有 {external_market_data['competitor_count_1km']} 家同性質競品，密度極高。"
+                    f"您的客單價 ($180) 高於市場均價 ($160) 約 12%。"
+                    "數據顯示消費者對價格敏感度正在提升，若無獨特差異化優勢，未來 3 個月訂單量恐有下滑風險。"
+                )
+            },
+            "menu_suggestion": {
+                "title": "差異化突圍策略：健康與口感的升級",
+                "new_dish_ideas": [
+                    {
+                        "name": "剝皮辣椒舒肥雞",
+                        "reason": "結合您現有的熱銷舒肥技術，加入市場爆紅的『剝皮辣椒』元素，能有效提升客單價並創造話題。"
+                    },
+                    {
+                        "name": "低GI藜麥溫沙拉",
+                        "reason": "針對熱搜關鍵字『溫沙拉』與『低GI』進行開發，填補目前菜單在輕食類的缺口。"
+                    }
+                ],
+                "improvement_action": "針對『配菜冷掉』的反饋，建議檢視外送包材保溫性，或將配菜改為無需高溫即可保持口感的涼拌菜式（如胡麻時蔬），避免外送過程導致體驗扣分。"
+            }
+        }
+    }
+
+    return jsonify(ai_response_mock), 200
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000)) 
     print(f"Starting Flask development server on http://127.0.0.1:{port}...")
