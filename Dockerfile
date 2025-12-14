@@ -1,21 +1,30 @@
-# 使用輕量級的 Python 3.9
+# 使用 Python 3.10
 FROM python:3.10-slim
 
 # 設定工作目錄
 WORKDIR /app
 
-# 安裝系統層級依賴：ffmpeg (這是關鍵) 和 git
+# 1. 安裝系統工具：curl (下載用), git, ffmpeg
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
+    curl \
     git \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# 複製並安裝 Python 套件
+# 2. 下載並安裝 Cloudflared (這是關鍵新增的步驟)
+RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && \
+    dpkg -i cloudflared.deb && \
+    rm cloudflared.deb
+
+# 3. 複製並安裝 Python 套件
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 複製程式碼
+# 4. 複製所有程式碼
 COPY . .
 
-# 啟動指令 (根據你的 requirements.txt，你用的是 gunicorn)
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:10000", "--timeout", "120", "app:app"]
+# 5. 給予腳本執行權限 (重要！不然 Render 會跑不動)
+RUN chmod +x entrypoint.sh
+
+# 6. 啟動指令改為執行 entrypoint.sh (原本是直接執行 gunicorn)
+CMD ["./entrypoint.sh"]

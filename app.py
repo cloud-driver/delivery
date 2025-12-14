@@ -1216,9 +1216,6 @@ def merchant_consultant(current_user):
     region = data.get('region', '西區')
     category = data.get('category', '健康餐盒')
     
-    # --- 2. 模擬數據層 (Mock Data Layer) ---
-    # 實務上這裡會從 DB 撈取該商家的歷史訂單，並透過爬蟲或 API 取得外部數據
-    
     internal_stats = {
         "monthly_orders": 1200,
         "avg_ticket_price": 180,
@@ -1228,14 +1225,13 @@ def merchant_consultant(current_user):
     }
 
     external_market_data = {
-        "competitor_count_1km": 45,  # 同性質餐廳數量
-        "market_saturation_index": "High", # 市場飽和指標
-        "trending_flavors": ["剝皮辣椒", "藜麥", "低GI"], # 目前流行
-        "competitor_avg_price": 160, # 競品均價
+        "competitor_count_1km": 45,
+        "market_saturation_index": "High",
+        "trending_flavors": ["剝皮辣椒", "藜麥", "低GI"],
+        "competitor_avg_price": 160,
         "delivery_platform_hot_search": "溫沙拉"
     }
-
-    # --- 3. 建構 Prompt ---
+    
     prompt = f"""
     【角色設定】
     你是一位擁有 20 年經驗的「餐飲商業數據顧問」。你的專長是透過數據找出商機漏洞。請根據以下數據，為位於「{region}」經營「{category}」的商家撰寫一份營運診斷報告。
