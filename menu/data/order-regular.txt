@@ -1,0 +1,43 @@
+[選擇餐廳]
+   ↓
+GET /api/restaurant/
+GET /api/restaurant/<id>
+
+[查看菜單]
+   ↓
+GET /api/menu/<restaurant_id>
+
+[加入購物車]
+   ↓
+POST /api/cart
+PUT /api/cart/<dish_id>
+DELETE /api/cart
+
+[結帳 → 建立訂單（含扣庫存）]
+   ↓
+POST /api/order
+→ DB Transaction：扣庫存 + 建立訂單（Atomic）
+
+[查詢訂單]
+   ↓
+GET /api/order/<order_id>
+
+[付款完成]
+   ↓
+PUT /api/order/<order_id>/payment
+→ 更新 payment.status = "paid"
+
+[餐廳準備中]
+   ↓
+PUT /api/order/<order_id>/status
+→ 更新 status = "preparing"
+
+[餐點完成]
+   ↓
+PUT /api/order/<order_id>/status
+→ 更新 status = "completed"
+
+[取消訂單（可選）]
+   ↓
+DELETE /api/order/<order_id>
+→ 更新 status = "cancelled"

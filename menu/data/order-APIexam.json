@@ -1,0 +1,11 @@
+{
+  "restaurant_id": "R002",
+  "table_id": "T05",
+  "items": [
+    {"dish_id": "D001", "quantity": 2},
+    {"dish_id": "D004", "quantity": 1},
+    {"dish_id": "D006", "quantity": 3}
+  ],
+  "note": "不要辣",
+  "timestamp": "2025-11-20T10:05:00"
+}

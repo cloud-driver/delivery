@@ -1,0 +1,40 @@
+{
+  "restaurant_id": "R001",
+  "name": "小吃天堂",
+  "menu_categories": [
+    {
+      "category_id": "CAT001",
+      "name": "主食",
+      "dishes": [
+        {
+          "dish_id": "D001",
+          "name": "滷肉飯",
+          "price": 60,
+          "is_available": true
+        },
+        {
+          "dish_id": "D002",
+          "name": "牛肉麵",
+          "price": 120,
+          "is_available": false  
+        }
+      ]
+    },
+    {
+      "category_id": "CAT002",
+      "name": "湯品",
+      "dishes": [
+        {
+          "dish_id": "D010",
+          "name": "貢丸湯",
+          "price": 40,
+          "is_available": true
+        }
+      ]
+    }
+  ]
+}
+
+
+
+

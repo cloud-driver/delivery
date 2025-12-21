@@ -1,0 +1,1 @@
+mysql+pymysql://root:@127.0.0.1:3306/e-system-delivery?charset=utf8mb4

@@ -1,0 +1,9 @@
+restaurant_id,name,category_id,category_name,dish_id,dish_name,price,is_available_status
+R001,台味小館,CAT001,主食,D001,滷肉飯,60,TRUE
+R001,台味小館,CAT001,主食,D002,雞腿飯,85,TRUE
+R001,台味小館,CAT001,主食,D003,排骨飯,80,FALSE
+R001,台味小館,CAT002,湯品,D004,貢丸湯,35,TRUE
+R001,台味小館,CAT002,湯品,D005,味噌湯,30,TRUE
+R001,台味小館,CAT003,小菜,D006,滷蛋,15,TRUE
+R001,台味小館,CAT003,小菜,D007,豆干,20,TRUE
+R001,台味小館,CAT003,小菜,D008,海帶絲,25,FALSE
